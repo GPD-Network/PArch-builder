@@ -14,7 +14,7 @@ fn foundation_cache_dir() -> Result<PathBuf> {
 
     let cache_dir =
         dirs.cache_dir()
-            .join("parch-builder")
+            .join("siali")
             .join("foundations");
 
     if !cache_dir.exists() {
@@ -23,6 +23,7 @@ fn foundation_cache_dir() -> Result<PathBuf> {
 
     Ok(cache_dir)
 }
+
 
 /// Fetch the resource at the given URL and save. The user must explicitly
 /// specify if they would like to overwrite it locally if it exists already.

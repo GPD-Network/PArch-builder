@@ -14,7 +14,7 @@ pub fn image_cache_dir() -> anyhow::Result<PathBuf> {
 
     let image_dir = dirs
         .cache_dir()
-        .join("parch-builder")
+        .join("siali")
         .join("images");
 
     std::fs::create_dir_all(&image_dir)?;
@@ -30,7 +30,7 @@ fn foundation_archive_dir() -> anyhow::Result<PathBuf> {
 
     let ret_dir =
         basedirs.cache_dir()
-                .join("parch-builder")
+                .join("siali")
                 .join("foundations");
 
     Ok(ret_dir)
@@ -109,7 +109,7 @@ pub fn create_foundation_img(
     // If it doesn't exist, bail with instructions for acquisition
     if !foundation_path.is_file() {
         anyhow::bail!(
-            "Foundation archive not found: {}. Try `parch-builder fetch {}.",
+            "Foundation archive not found: {}. Try `siali fetch {}.",
             foundation_path.display(), sbc_model
         )
     }

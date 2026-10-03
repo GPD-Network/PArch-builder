@@ -1,5 +1,5 @@
-sbc_model: rpi2w
-sbc_long_name: "Raspberry Pi Zero 2W"
+platform: rpi2w
+platform_long_name: "Raspberry Pi Zero 2W"
 foundation_url: http://os.archlinuxarm.org/os/ArchLinuxARM-rpi-aarch64-latest.tar.gz
 
 description: "Mainline Arch Linux kernel with minimum drivers and headers for the RPi Zero 2W"

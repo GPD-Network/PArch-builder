@@ -1,17 +1,27 @@
-//! Builder for Arch Linux on Pi-style Platforms.
+//! Builder for Arch Linux on Pi-style and Generic Platforms.
+use std::{io, process};
+
+use std::io::Write;  // Write trait provides the `flush` method
+use std::os::unix::fs::FileTypeExt;  // Check if path is block device, e.g.
+use std::path::{Path,PathBuf};
+
+// Third-party cargo imports
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
 use glob::glob;
 
-use pbuilder::{manifest,image};
+// Library imports
+use siali::{manifest,image};
+use siali::sudo_cmd;
 
 
 #[derive(Parser)]
 #[command(
-    name = "pb",
+    name = "siali",
     version,
-    about = "Build reproducible system images from sbc_model manifests"
+    about = "Build reproducible Sustained Inference Arch Linux, SÍ-ALí, system images from configuration manifests"
 )]
+
+
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -26,18 +36,18 @@ enum Commands {
 
     /// Fetch a source from the manifest
     Fetch {
-        /// sbc_model name indicating yml in manifests
-        sbc_model: String,
+        /// platform name indicating yml in manifests
+        platform: String,
 
         /// Whether to overwrite existing foundations
         #[arg(long, short='o')]
         overwrite: bool,
     },
 
-    /// Build an img of the foundation for the given SBC model
+    /// Build an img of the foundation for the given platform
     Build {
-        /// Short name of the SBC model matching manifest yml, eg, rpi2w
-        sbc_model: String,
+        /// Short name of the platform matching manifest yml, eg, rpi2w
+        platform: String,
         ///
         /// Size of the virtual SD card for making the .img in MiB
         #[arg(long, default_value_t=8_000)]
@@ -76,24 +86,20 @@ enum Commands {
         /// Flag to overwrite existing compressed file
         #[arg(long, short = 'o')]
         overwrite: bool
-
     },
 
     /// Install a parch platform to a device
     Install {
-        /// Short name for SBC, eg, rpi2w for the Raspberry Pi Zero 2W
-        sbc_model: String,
 
-        //// Device where PArch is to be installed
-        // device_path: PathBuf,
+        /// Device where siali is to be installed
+        device_path: PathBuf,
 
-        //// Whether to install to a local loop device before writing to the SD
-        #[arg(long)]
-        dryrun: bool,
+        /// Short name for platform, i.e. x86 or SBC. Eg, rpi2w for the Raspberry Pi Zero 2W
+        platform: String,
 
-        //// Whether to persist a local loop device initialized in dry run
-        // #[arg(long)]
-        // dryrun_persist: bool
+        /// Perform a test-run, stepping through command but not really installing
+        #[arg(short = 't', long)]
+        test_run: bool
     },
 }
 
@@ -117,13 +123,13 @@ fn main() -> anyhow::Result<()> {
                 manifest_path
                     .to_str()
                     .unwrap_or_else(
-                        || ".config/parch-builder/manifests"
+                        || ".config/siali/manifests"
                     )
             );
 
             manifest_glob_str.push_str("/*.yml");
 
-            println!("\nAvailable SBC manifests found with glob\n{}:\n\n",
+            println!("\nAvailable platform manifests found with glob\n{}:\n\n",
                      manifest_glob_str);
 
             for entry in glob(&manifest_glob_str)
@@ -140,19 +146,19 @@ fn main() -> anyhow::Result<()> {
 
         // *** FETCH ***
         Commands::Fetch {
-            sbc_model,
+            platform,
             overwrite,
         } => {
 
-            println!("Fetching the foundation for SBC model {}...", sbc_model);
+            println!("Fetching the foundation for platform {}...", platform);
 
-            let foundation_path = pbuilder::read_manifest_and_fetch_foundation(
-                &sbc_model, overwrite
+            let foundation_path = siali::read_manifest_and_fetch_foundation(
+                &platform, overwrite
             )?;
 
             // Notify user what was done
             println!(
-                "Foundation archive acquired for SBC model {}.", sbc_model
+                "Foundation archive acquired for SBC model {}.", platform
             );
             println!(
                 "Foundation archive has been synced to {}", foundation_path.display()
@@ -163,22 +169,22 @@ fn main() -> anyhow::Result<()> {
 
         // *** BUILD ***
         Commands::Build {
-            sbc_model,
+            platform,
             mock_sd_size_mib,
             boot_size_mib,
             overwrite,
         } => {
 
             let image_path = image::image_cache_dir()?
-                .join(format!("{sbc_model}.img"));
+                .join(format!("{platform}.img"));
 
             if image_path.exists() && !overwrite {
                 eprintln!("Using cached image: {}", image_path.display());
                 return Ok(());
             }
 
-            let image_path = pbuilder::image::create_foundation_img(
-                &sbc_model,
+            let image_path = siali::image::create_foundation_img(
+                &platform,
                 mock_sd_size_mib,
                 boot_size_mib
             )?;
@@ -213,7 +219,7 @@ fn main() -> anyhow::Result<()> {
             }
 
             let compressed_path =
-                pbuilder::image::compress(
+                siali::image::compress(
                     &image_path,
                     threads,
                     level,
@@ -231,14 +237,75 @@ fn main() -> anyhow::Result<()> {
         },
 
         // *** INSTALL TO CARTÕES ***
-        // Commands::Install { sbc_model, device_path, dryrun, dryrun_persist } => {
-        Commands::Install { sbc_model, dryrun } => {
-            println!("target: {sbc_model}");
-            println!("dry run: {dryrun}");
+        Commands::Install { platform, device_path, test_run  } => {
+
+            // Read device metadata to confirm it is a block device; bail if not
+            let metadata = std::fs::metadata(&device_path)?;
+            if !metadata.file_type().is_block_device() {
+                anyhow::bail!("Not a block device: {}", device_path.display());
+            }
+
+            // Construct the path to the image file
+            let image_path = image::image_cache_dir()?
+                .join(format!("{platform}.img.xz"));
+
+            // Confirm user indeed wants to install the image to the device
+            print!("Install {image_path:?} to {device_path:?}? [y/N] ");
+            io::stdout().flush()?;
+
+            let mut answer = String::new();
+            io::stdin().read_line(&mut answer)?;
+
+            // Exit with return code 0 if user disconfirms
+            if !answer.trim().eq_ignore_ascii_case("y") {
+                println!("Cancelled.");
+                return Ok(());
+            }
+
+            // If user just wants a test-run, print what would have happened
+            if test_run {
+
+                print!("TEST RUN COMPLETE\nWould install {image_path:?} to {device_path:?}.");
+                return Ok(())
+            } else {
+                shell_install(&image_path, &device_path)?;
+            }
+
+            print!("\nInstallation complete.\n\nInstalled {image_path:?} to {device_path:?}.\n\n");
 
             Ok(())
         }
-
     }
 }
 
+/// Helper to either launch balena with requested system image or do shell install
+fn shell_install(image_path: &Path, device_path: &Path) -> anyhow::Result<()> {
+
+    print!("\nBeginning installation of {image_path:?} to {device_path:?}.\n\n");
+
+    // Decompress the image into memory (via Stdio::piped)
+    let mut xz = process::Command::new("xz")
+        .args(["-dc"])
+        .arg(&image_path)
+        .stdout(process::Stdio::piped())
+        .spawn()?;
+
+    // Write the decompressed, in-memory blob to the device
+    let mut dd = sudo_cmd("dd")
+        .arg("of={device}")
+        .arg("bs=4M")
+        .arg("status=progress")
+        .stdin(xz.stdout.take().unwrap())
+        .spawn()?;
+
+    // Can't continue until the shell commands finish
+    let xz_status = xz.wait()?;
+    let dd_status = dd.wait()?;
+
+    // Bail if either command failed
+    if !xz_status.success() || !dd_status.success() {
+        anyhow::bail!("Image installation failed");
+    }
+
+    Ok(())
+}

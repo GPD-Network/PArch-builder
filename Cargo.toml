@@ -1,8 +1,12 @@
 [package]
-name = "pbuilder"
+name = "siali"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
+
+[[bin]]
+name = "siali"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.104"

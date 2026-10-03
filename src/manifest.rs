@@ -42,7 +42,7 @@ pub fn manifest_dir() -> Result<PathBuf> {
 
     let ret_dir =
         basedirs.config_dir()
-                .join("parch-builder")
+                .join("siali")
                 .join("manifests");
 
 
@@ -53,9 +53,9 @@ pub fn manifest_dir() -> Result<PathBuf> {
 /// Returns the platform-standard path for a named manifest.
 ///
 /// ```text
-/// Linux:  ~/.config/parch-builder/manifests/rpi2w.yml
-/// macOS:  ~/Library/Application Support/parch-builder/manifests/rpi2w.yml
-/// Windows: C:\Users\Alice\AppData\Roaming\parch-builder\manifests\rpi2w.yml
+/// Linux:  ~/.config/siali/manifests/rpi2w.yml
+/// macOS:  ~/Library/Application Support/siali/manifests/rpi2w.yml
+/// Windows: C:\Users\Alice\AppData\Roaming\siali\manifests\rpi2w.yml
 /// ```
 ///
 /// The exact base directory may vary according to environment variables
@@ -65,19 +65,19 @@ pub fn manifest_dir() -> Result<PathBuf> {
 ///
 /// ```rust
 /// use std::path::Path;
-/// use pbuilder::manifest::manifest_path;
+/// use siali::manifest::manifest_path;
 ///
 /// let path = manifest_path("rpi2w")?;
 ///
 /// assert!(
 ///     path.ends_with(
-///         Path::new("parch-builder")
+///         Path::new("siali")
 ///             .join("manifests")
 ///             .join("rpi2w.yml")
 ///     )
 /// );
 ///
-///  Ok::<(), anyhow::Error>(())
+///  Ok(())
 /// ```
 pub fn manifest_path(name: &str) -> Result<PathBuf> {
     Ok(manifest_dir()?.join(format!("{name}.yml")))
