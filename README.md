@@ -5,11 +5,10 @@
 Build reproducible Sustained Inference Arch Linux (SÍ-ALí or `siali`) system
 images from platform manifests using the `siali` CLI tool, written in Rust.
 
-`siali` was first developed for our
-PArch platform for **P**i-style single-board computers (SBCs),
-based on our customized **Arch** Linux operating system.
+`siali` builds customized **Arch Linux** operating environments for supported
+platforms, including single-board computers (SBCs) and `x86_64` systems.
 
-We also have a generic USB-bootable installer for SÍ-Alí on systems with
+We also have a generic USB-bootable installer for SÍ-ALí on systems with
 `x86_64` processors.
 
 Support or instructions for additional platforms will be forthcoming. We would
@@ -23,8 +22,4 @@ important work.
 
 The Generation of Participation in Democracy is a 501(c)(3) humanitarian charity
 registered with the US Internal Revenue Service and the State of California.
-**EIN: 41-4992913***.
-
-## Usage
-
-
+**EIN: 41-4992913**.
