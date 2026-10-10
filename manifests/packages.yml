@@ -1,0 +1,14 @@
+metadata:
+  date: 2026-10-03
+  author: Matt Turner <matt@mat.phd>
+  note: Functional list of SÍ-ALí essentials
+packages:
+  - name: quarto
+    source_url: https://github.com/quarto-dev/quarto-cli/releases/download/v1.10.18/quarto-1.10.18-linux-arm64.tar.gz
+  - name: sway
+    package: sway
+  - name: git
+    package: git
+  - name: base-devel
+    package: base-devel
+

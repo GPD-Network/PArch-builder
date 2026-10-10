@@ -1,9 +1,6 @@
 //! Builder for Arch Linux on Pi-style and Generic Platforms.
-use std::{io, process};
-
-use std::io::Write;  // Write trait provides the `flush` method
 use std::os::unix::fs::FileTypeExt;  // Check if path is block device, e.g.
-use std::path::{Path,PathBuf};
+use std::path::{PathBuf};
 
 // Third-party cargo imports
 use clap::{Parser, Subcommand};
@@ -11,7 +8,6 @@ use glob::glob;
 
 // Library imports
 use siali::{manifest,image};
-use siali::sudo_cmd;
 
 
 #[derive(Parser)]
@@ -91,15 +87,12 @@ enum Commands {
     /// Install a parch platform to a device
     Install {
 
-        /// Device where siali is to be installed
-        device_path: PathBuf,
-
         /// Short name for platform, i.e. x86 or SBC. Eg, rpi2w for the Raspberry Pi Zero 2W
         platform: String,
 
-        /// Perform a test-run, stepping through command but not really installing
-        #[arg(short = 't', long)]
-        test_run: bool
+        /// Device where siali is to be installed
+        device_path: PathBuf,
+
     },
 }
 
@@ -237,7 +230,7 @@ fn main() -> anyhow::Result<()> {
         },
 
         // *** INSTALL TO CARTÕES ***
-        Commands::Install { platform, device_path, test_run  } => {
+        Commands::Install { platform, device_path  } => {
 
             // Read device metadata to confirm it is a block device; bail if not
             let metadata = std::fs::metadata(&device_path)?;
@@ -245,67 +238,12 @@ fn main() -> anyhow::Result<()> {
                 anyhow::bail!("Not a block device: {}", device_path.display());
             }
 
-            // Construct the path to the image file
-            let image_path = image::image_cache_dir()?
-                .join(format!("{platform}.img.xz"));
+            siali::sd::install_img(&platform, &device_path)?;
 
-            // Confirm user indeed wants to install the image to the device
-            print!("Install {image_path:?} to {device_path:?}? [y/N] ");
-            io::stdout().flush()?;
-
-            let mut answer = String::new();
-            io::stdin().read_line(&mut answer)?;
-
-            // Exit with return code 0 if user disconfirms
-            if !answer.trim().eq_ignore_ascii_case("y") {
-                println!("Cancelled.");
-                return Ok(());
-            }
-
-            // If user just wants a test-run, print what would have happened
-            if test_run {
-
-                print!("TEST RUN COMPLETE\nWould install {image_path:?} to {device_path:?}.");
-                return Ok(())
-            } else {
-                shell_install(&image_path, &device_path)?;
-            }
-
-            print!("\nInstallation complete.\n\nInstalled {image_path:?} to {device_path:?}.\n\n");
+            print!("\nInstallation complete.\n\nInstalled {platform:?} to {device_path:?}.\n\n");
 
             Ok(())
         }
     }
 }
 
-/// Helper to either launch balena with requested system image or do shell install
-fn shell_install(image_path: &Path, device_path: &Path) -> anyhow::Result<()> {
-
-    print!("\nBeginning installation of {image_path:?} to {device_path:?}.\n\n");
-
-    // Decompress the image into memory (via Stdio::piped)
-    let mut xz = process::Command::new("xz")
-        .args(["-dc"])
-        .arg(&image_path)
-        .stdout(process::Stdio::piped())
-        .spawn()?;
-
-    // Write the decompressed, in-memory blob to the device
-    let mut dd = sudo_cmd("dd")
-        .arg("of={device}")
-        .arg("bs=4M")
-        .arg("status=progress")
-        .stdin(xz.stdout.take().unwrap())
-        .spawn()?;
-
-    // Can't continue until the shell commands finish
-    let xz_status = xz.wait()?;
-    let dd_status = dd.wait()?;
-
-    // Bail if either command failed
-    if !xz_status.success() || !dd_status.success() {
-        anyhow::bail!("Image installation failed");
-    }
-
-    Ok(())
-}

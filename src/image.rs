@@ -1,4 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    iter::repeat_n,
+    fs,
+};
 use anyhow::{Context, ensure};
 use directories::BaseDirs;
 
@@ -17,7 +21,7 @@ pub fn image_cache_dir() -> anyhow::Result<PathBuf> {
         .join("siali")
         .join("images");
 
-    std::fs::create_dir_all(&image_dir)?;
+    fs::create_dir_all(&image_dir)?;
 
     Ok(image_dir)
 }
@@ -122,8 +126,8 @@ pub fn create_foundation_img(
     let mount_boot = mount_dir.path().join("boot");
 
     // Create the directories in the userspace file system, in the temp dir
-    std::fs::create_dir_all(&mount_root)?;
-    std::fs::create_dir_all(&mount_boot)?;
+    fs::create_dir_all(&mount_root)?;
+    fs::create_dir_all(&mount_boot)?;
 
     mount(&partition_paths.root, &mount_root)?;
     extract_foundation_to_root(&foundation_path, &mount_root)?;
@@ -136,7 +140,7 @@ pub fn create_foundation_img(
     // We need the device boot partition mounted
     mount(&device_boot, &mount_boot)?;
     // Copy the boot files from the root dir in user space to boot partition
-    copy_boot_from_root(&device_boot, &mount_root, &mount_boot)?;
+    move_boot_files(&device_boot, &mount_root, &mount_boot)?;
 
     //--- *** Step 4: sync and unmount devices
     //
@@ -162,7 +166,7 @@ pub fn create_foundation_img(
 fn mount(device_partition: &Path,
          mountpoint: &Path) -> anyhow::Result<()> {
 
-    std::fs::create_dir_all(mountpoint)
+    fs::create_dir_all(mountpoint)
         .with_context(|| format!("Count not create mountpoint {}",
                                  mountpoint.display()))?;
 
@@ -225,27 +229,49 @@ fn extract_foundation_to_root(foundation_path: &PathBuf,
 }
 
 
-/// Copy all files from the boot directory of the new filesystem to the mounted
-/// boot directory. These are the files the SBC reads to initialize the
+/// Move all entries from the new filesystem's boot directory to the mounted
+/// boot partition. These are the files the SBC reads to initialize the
 /// hardware so the software can operate as desired.
-fn copy_boot_from_root(device_boot: &PathBuf,
-                       mount_root:  &PathBuf,
-                       mount_boot:  &PathBuf) -> anyhow::Result<()> {
-
-    // Mount the device boot partition to the boot mount directory,
-    // outside of the mounted root directory.
+fn move_boot_files(
+    device_boot: &PathBuf,
+    mount_root: &PathBuf,
+    mount_boot: &PathBuf,
+) -> anyhow::Result<()> {
+    // Mount the device boot partition outside the mounted root filesystem.
     mount(device_boot, mount_boot)?;
 
-    // Get the path to the boot directory in the new mounted OS filesystem
-    let boot_to_be_copied: PathBuf = mount_root.join("/boot");
-    // Throw an error if the boot directory doesn't exist
+    // Get the boot directory in the new mounted OS filesystem.
+    let boot_to_be_moved = mount_root.join("boot");
+
     ensure!(
-        boot_to_be_copied.exists() && boot_to_be_copied.is_dir(),
-        format!(
-            "Boot dir {} does not exist that was to be copied to boot partition",
-            boot_to_be_copied.display()
-        )
+        boot_to_be_moved.exists() && boot_to_be_moved.is_dir(),
+        "Boot dir {} does not exist to copy to boot partition",
+        boot_to_be_moved.display()
     );
+
+    // Move each entry, equivalent to `mv mount_root/boot/* mount_boot`.
+    // Expand the entries in Rust; Command arguments do not expand shell globs.
+    for entry in fs::read_dir(&boot_to_be_moved)
+        .with_context(|| format!("Failed to read {}", boot_to_be_moved.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+
+        let status = sudo_cmd("mv")
+            .arg("--")
+            .arg(&path)
+            .arg(mount_boot)
+            .status()
+            .with_context(|| {
+                format!(
+                    "Failed to move {} into {}",
+                    path.display(),
+                    mount_boot.display()
+                )
+            })?;
+
+        ensure!(status.success(), "mv failed with {status}");
+    }
 
     Ok(())
 }
@@ -273,7 +299,7 @@ pub fn compress(
             .arg(format!("-{level}"))
             .arg(format!("--memlimit-compress={memory_limit}"))
             .args(overwrite.then_some("--force"))
-            .args(std::iter::repeat_n("-v", verbose.into()))
+            .args(repeat_n("-v", verbose.into()))
             .arg(image_path)
             .status()
             .with_context( || { format!("xz failed to run") } )?;

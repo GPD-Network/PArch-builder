@@ -2,6 +2,7 @@ pub mod fetch;
 pub mod manifest;
 pub mod block_device;
 pub mod image;
+pub mod sd;
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -16,13 +17,13 @@ pub fn sudo_cmd(cmd_name: &str) -> std::process::Command {
 
 
 pub fn read_manifest_and_fetch_foundation(
-    sbc_model: &str,
+    platform: &str,
     overwrite: bool) -> anyhow::Result<PathBuf> {
 
 
     // Fetch the foundation URL field stored in the manifest of interest
     let foundation_path = fetch::fetch(
-        manifest::read(sbc_model)?.foundation_url,
+        manifest::read(platform)?.foundation_url,
         overwrite
     )?;
 
@@ -76,7 +77,7 @@ mod tests {
         writeln!(
             manifest_file,
             "\
-sbc_model: rust-logo
+platform: rust-logo
 foundation_url: https://rust-lang.org/static/images/rust-logo-blk.svg"
         )?;
 
@@ -84,8 +85,8 @@ foundation_url: https://rust-lang.org/static/images/rust-logo-blk.svg"
         manifest_file.flush()?;
 
         // *** We need to replace .svg with .yml in our temp manifest file name
-        // Start by extracting only the "sbc_model" including temp file slug
-        let sbc_model = manifest_file
+        // Start by extracting only the "platform" including temp file slug
+        let platform = manifest_file
             .path()
             .file_stem()
             .context("Temporary manifest has no file stem")?
@@ -104,7 +105,7 @@ foundation_url: https://rust-lang.org/static/images/rust-logo-blk.svg"
 
         // Test helper function for the `fetch` cli command
         read_manifest_and_fetch_foundation(
-            sbc_model,
+            platform,
             true  // overwrite
         )?;
 
@@ -121,7 +122,7 @@ foundation_url: https://rust-lang.org/static/images/rust-logo-blk.svg"
 
         // Test that overwrite=false preserves the existing file
         read_manifest_and_fetch_foundation(
-            sbc_model,
+            platform,
             false  // don't overwrite
         )?;
 
